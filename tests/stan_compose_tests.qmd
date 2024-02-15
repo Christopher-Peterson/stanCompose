@@ -1,0 +1,369 @@
+---
+title: "Unit Tests for Stan-Compose"
+format: github_document
+---
+
+What's my goal with this? Set up unit tests to verify that any adjustments I make keep things working.
+
+## Planned Adjustments:
+
+Change literal arguments from `$(an arg)` to `"an arg"`.  
+
+Make sure multi-level argument passing works.
+
+E.g. if a macro contains
+`@(macro_call: $(1) )`, then it propagates the $(1) inside it, so that the outer macro's argument takes its place.
+
+In theory, this should be automatic, but it needs to be tested.
+
+# Setup
+```{r, echo = FALSE, include = FALSE}
+library(tinytest)
+source('stan_compose_functions.R')
+expect_idem_equal = \(target, fn, ..., info = NA_character_) expect_equal(fn(target), target, ..., info = info)
+
+```
+
+Pre-define a few macros in a test list.
+Reminder on how to do this: Every small relevant function gets tested, before building to the larger ones.
+
+# Utility function 
+
+## `swap_name_val()`
+```{r}
+nv_tst =  as.character(1:5) |> set_names(LETTERS[1:5]) 
+nv_tst_rev = set_names(LETTERS[1:5], 1:5) 
+expect_equal(swap_name_val(nv_tst), nv_tst_rev, 'Basic test')
+expect_equal(nv_tst |> swap_name_val() |> swap_name_val(), nv_tst, 'Reversable')
+expect_equal(1:5 |> swap_name_val() |> swap_name_val(), nv_tst |> set_names(''), 'Numerics & empty names')
+```
+
+## `collapse_lines()`, `split_line(s)`
+```{r}
+ml_text = c('line one', 'line two', 'line 3')
+ml_text_collapsed = "line one
+line two
+line 3"
+expect_equal(ml_text |> collapse_lines() |> split_line(), ml_text, info = 'Identity')
+expect_equal(ml_text |> collapse_lines(), ml_text_collapsed, info = 'collapse')
+expect_equal(ml_text_collapsed |> split_line(), ml_text, info = 'split')
+expect_equal(rep(ml_text_collapsed, 2) |> split_lines(), list(ml_text, ml_text), info = 'Multiple split')
+
+```
+
+## `str_extract_recursive()`
+
+Test that matched parentheses extraction works.
+```{r}
+paren_test = 'drop $(1 one (2 two (3 three) 2 two) 1 one) drop drop @(abc (def) ff)' 
+expect_equal(str_extract_recursive(paren_test, "(\\((?>[^()]|(?1))*\\))"),
+             list(c("(1 one (2 two (3 three) 2 two) 1 one)", "(abc (def) ff)" )))
+expect_equal(str_extract_recursive(paren_test, "[@$](\\((?>[^()]|(?1))*\\))"),
+             list(c("$(1 one (2 two (3 three) 2 two) 1 one)", "@(abc (def) ff)" )))
+```
+
+## `str_replace_fixed_multi()`
+```{r}
+test_text = c("a b c", 'b c', 'c d')
+expect_equal(str_replace_fixed_multi(test_text, c('b', 'c'), c('Bravo$', 'Catfish') ),
+             c("a Bravo$ Catfish", 'Bravo$ Catfish', 'Catfish d'), info = "Replacement works")
+expect_error(str_replace_fixed_multi(test_text, c('b'), c('Bravo$', 'Catfish') ),
+             'patterns and replacements must be same length',
+             info = "Pattern too short")
+expect_error(str_replace_fixed_multi(test_text, c('b', 'c'), c('Bravo$') ),
+             'patterns and replacements must be same length',
+             info = "Pattern too long")
+```
+
+
+# Text stripping functions
+
+## `strip_macro_at()`
+
+Function is supposed to convert `@(macro_call)` and `@macro_call` to `macro_call`.
+```{r}
+expect_equal('@basic_macro: arg' |> strip_macro_at(), 'basic_macro: arg', 
+  'Whole Line, basic')
+expect_equal('@(basic_macro: arg)' |> strip_macro_at(), 'basic_macro: arg', 
+  'Inline, basic')
+expect_equal('@basic_macro: $(1)' |> strip_macro_at(), 'basic_macro: $(1)', 
+  'Whole Line, excess paren')
+expect_equal('@(basic_macro: $(1))' |> strip_macro_at(), 'basic_macro: $(1)', 
+  'Inline, excess paren')
+expect_equal('@macro: @(macro2: @macro3 $(1))' |> strip_macro_at(), 
+             'macro: @(macro2: @macro3 $(1))', 'Whole Line, Nested')
+expect_equal('@(macro: @(macro2: @macro3 $(1)))' |> strip_macro_at(), 
+             'macro: @(macro2: @macro3 $(1))', 'Inline, Nested')
+expect_idem_equal('name @(macro) name', strip_macro_at,
+             "Doesn't change invalid input")
+```
+
+## `strip_dollar_paren()`
+```{r}
+expect_equal('$(1)' |> strip_dollar_paren(), '1', 'basic')
+expect_idem_equal('@macro $(1)',  strip_dollar_paren, "doesn't change invalid input")
+```
+
+## `strip_outer_quotes()`
+```{r} 
+expect_equal('"with outer quotes"' |> strip_outer_quotes(), "with outer quotes", 'Basic')
+expect_equal('""' |> strip_outer_quotes(), "", 'Empty')
+expect_idem_equal('with weird "quotes"', strip_outer_quotes, "doesn't change with quotes elsewhere")
+
+```
+
+
+## `strip_comments()`
+
+```{r}
+tst_comment = c('test line 1',
+'// whole comment line',
+'/* block comment start',
+'// whole comment line 2',
+'end block */',
+'/* single block line*/',
+'mid-line /* delete */ comment',
+'mid-line /* block // and line comment, delete me twice', 
+'*/ comment')
+tst_comment_out = c("test line 1", "", "", "", "mid-line  comment", "mid-line  comment")
+
+expect_equal(tst_comment |> strip_comments(), tst_comment_out, 'Full test')
+expect_equal(tst_comment[c(3, 5)] |> strip_comments(), character(0), 'Block comments leave nothing behind')
+expect_equal(tst_comment[6] |> strip_comments(), character(0), 'Block comments leave nothing behind, single-line')
+expect_equal(tst_comment[4] |> strip_comments(), '', 'Line comments leave "".')
+expect_equal(tst_comment[8] |> strip_comments(), 'mid-line /* block ', 'incomplete block lets line pass')
+expect_equal(tst_comment[8:9] |> strip_comments(), 'mid-line  comment', 'complete block supercedes line')
+```
+
+# Macro parsing functions
+## `extract_macro_args()`
+```{r}
+tst_args = c(
+  'macro: arg1 arg2',
+  'macro:arg_1 arg-2', # No space after colon, underscore, hyphen
+  'macro: 1 arg2', # numeric arg
+  'macro: "multi space" arg2 ""', # mult space arg (and a final empty arg)
+  'macro: $(1) arg2', # passed arg as arg
+  'macro: @macro2 arg2', # simple macro arg
+  'macro: @(macro2: arg 1 arg2) arg3', # nested macro arg
+  'macro: @(macro2: @(macro3: $(1) "multi arg" @macro4 ) arg5) $(2) "multi arg last"' # complex
+)
+tst_args_expec = list(
+  c("macro", "arg1", "arg2"), c("macro", "arg_1", "arg-2"), 
+  c("macro", "1", "arg2"), c("macro", "multi space", "arg2", ""),
+  c("macro", "$(1)", "arg2"), c("macro", "@macro2", "arg2"), 
+  c("macro", "@(macro2: arg 1 arg2)", "arg3"), 
+  c("macro", "@(macro2: @(macro3: $(1) \"multi arg\" @macro4 ) arg5)", 
+    "$(2)", "multi arg last"))
+
+# tst_args_bad = 'macro arg1 arg2' # no colon
+expect_equal(tst_args |> extract_macro_args(), tst_args_expec, 'performance to specification')
+```
+
+I should think of some failure/corner cases and add tests to them too.
+
+## `splice_macro_args()`
+
+```{r}
+test_macros = list(
+  wl_basic = collapse_lines(c('abc', '$1', 'def')),
+  il_basic = 'abc $(1) def',
+  joint = collapse_lines(c('abc $(2),', '$1', 'def')),
+  wl_comment = collapse_lines(c('abc', '// $1', '$1 // comm', 'def')),
+  wl_comment_error = collapse_lines(c('abc', '// $1', 'def')),
+  c = '// a comment \n$@'
+)
+test_args = list(
+  simple = c('arg'),
+  double = c('a1', 'a2'),
+  spaced = c("multi arg")
+)
+# Testing each macro
+expect_equal(splice_macro_args(test_macros$wl_basic, test_args$simple),
+             'abc\narg\ndef', 'whole line test')
+expect_equal(splice_macro_args(test_macros$il_basic, test_args$simple),
+             'abc arg def', 'in line test')
+expect_equal(splice_macro_args(test_macros$joint, test_args$double),
+             'abc a2,\na1\ndef', '2-arg test')
+expect_equal(splice_macro_args(test_macros$wl_comment, test_args$simple),
+             'abc\n// $1\narg\ndef', 'wl comment post')
+expect_error(splice_macro_args(test_macros$wl_comment_error, test_args$simple),
+             info =  'comment blocks arg, provides error')
+expect_error(splice_macro_args(test_macros$joint, test_args$simple),
+             info =  'not enough args')
+# multi-space arg
+expect_equal(splice_macro_args(test_macros$wl_basic, test_args$spaced),
+             'abc\nmulti arg\ndef', 'whole line test')
+expect_equal(splice_macro_args(test_macros$il_basic, test_args$spaced),
+             'abc multi arg def', 'in line test')
+```
+```{r}
+# Test the c() macro
+expect_equal(splice_macro_args(test_macros$c, test_args$double),
+             '// a comment \na1\na2', '$@ test')
+
+```
+
+Now let's look at passing $(n) as an argument.
+The desired behavior is to not splice $(n) out
+```{r}
+  pmac = list(
+    p2_1 = c('abc','$(2)', '$1', 'def'),
+    p1_2 = c('abc','$(1)', '$2', 'def')
+  ) |> map(collapse_lines)
+
+expect_equal(splice_macro_args(test_macros$wl_basic, '$(4)'),
+             'abc\n$(4)\ndef', 'simple passing')
+expect_equal(splice_macro_args(pmac$p2_1,  c('arg', '$(1)')),
+             'abc\n$(1)\narg\ndef')
+expect_equal(splice_macro_args(pmac$p2_1,  c('$(2)', 'arg')),
+             'abc\narg\n$(2)\ndef')
+expect_equal(splice_macro_args(pmac$p1_2, c('arg', '$(1)')),
+             'abc\narg\n$(1)\ndef')
+expect_equal(splice_macro_args(pmac$p1_2, c('$(2)', 'arg')),
+             'abc\n$(2)\narg\ndef')
+expect_equal(splice_macro_args(pmac$p2_1,  c('$(1)', '$(1)')),
+             'abc\n$(1)\n$(1)\ndef')
+```
+
+
+## `parse_macro_args()` and `parse_macro_line()`
+These can call each other recursively, so they should be tested together
+
+First, simple non-nested calls for `parse_macro_args()` and `parse_macro_line()`
+```{r}
+tst_args = c(
+  '@macro1: arg1 arg2',
+  '@(macro1: 1 arg2)', # numeric arg
+  '@macro2: "multi space" arg2 ""' # mult space arg (and a final empty arg)
+)
+tst_args_sep = tst_args |> str_sub(2, -1) |> extract_macro_args()
+tst_arg_defs = list(
+  macro1 = 
+'head
+$1 // comment
+and ends with $(2), now.
+',
+macro2 =
+'head2
+$1
+and after $(2), we fin$(3)ish strong
+$1
+'
+)
+expec_out = c(macro1 = "head\narg1\nand ends with arg2, now.\n", 
+              macro1 = "head\n1\nand ends with arg2, now.\n",  
+              macro2 = "head2\nmulti space\nand after arg2, we finish strong\nmulti space\n")
+expect_equal(parse_macro_args(tst_args_sep, tst_arg_defs), expec_out,
+             'Simple, non-nested arg parsing.')
+expect_equal(parse_macro_line(tst_args, tst_arg_defs), expec_out |> as.list(),
+             'Simple, non-nested line parsing.')
+```
+
+More complex tests that will involve nesting
+```{r}
+tst_arg_defs_cplx = c(tst_arg_defs, list(
+  macro_nest = 'nested: $(1) and $(2)',
+  macro_null = 'null_macro_inserted'
+))
+tst_args_cplx = c(
+  '@macro1: @macro_null arg2', # simple macro arg
+  '@macro1: $(1) arg2', # passed arg as arg
+  '@macro1: @(macro_nest: nest_a1 nest_a2) arg3', # nested macro arg
+  '@macro1: @(macro_nest: nest_a1 $(2)) arg3' , # nested macro arg
+  '@macro1: @(macro_nest: $(2) nest_a2) arg3', # nested macro arg
+  '@macro2: @(macro_nest: $(3) nest_a2) outer_arg "ally fin"' # nested macro arg
+
+  # 'macro: @(macro2: @(macro3: $(1) "multi arg" @macro4 ) arg5) $(2) "multi arg last"' # complex
+); tst_args_cplx_sep = tst_args_cplx |> str_sub(2, -1) |> extract_macro_args()
+expec_out_cplx = c(
+  macro1 = "head\nnull_macro_inserted\nand ends with arg2, now.\n",
+  macro1 = "head\n$(1)\nand ends with arg2, now.\n",
+  macro1 = "head\nnested: nest_a1 and nest_a2\nand ends with arg3, now.\n",
+  macro1 = "head\nnested: nest_a1 and $(2)\nand ends with arg3, now.\n" ,
+  macro1 = "head\nnested: $(2) and nest_a2\nand ends with arg3, now.\n",
+  macro2 = "head2\nnested: $(3) and nest_a2\nand after outer_arg, we finally finish strong\nnested: $(3) and nest_a2\n"
+  )
+arg_pass_out =  parse_macro_args(tst_args_cplx_sep, tst_arg_defs_cplx)
+expect_equal(arg_pass_out, expec_out_cplx,
+             "Testing argument passing, parse args")
+expect_equal(parse_macro_line(tst_args_cplx, tst_arg_defs_cplx), expec_out_cplx |> as.list(),
+             "Testing argument passing, parse lines")
+
+bad = which(arg_pass_out!=expec_out_cplx)
+if(length(bad) > 0) {
+  cat("Failing indices: ", bad, '\n\n')
+  paste("Expected:", expec_out_cplx[bad], "Observed:", arg_pass_out[bad], sep = '\n') |> cat()
+}
+# parse_macro_args(tst_args_cplx_sep, tst_arg_defs_cplx)[6] |> dput()
+```
+
+## `parse_stan_macro()`
+
+```{r}
+# These refer to variabiles defined in the parse_macro_args() test chunk
+test_macro = c('combined macro is here // with a comment', # 1
+               '// two whole-lines after this', # 2
+               tst_args_cplx[c(1,6)], #3,4
+               "/* This next one is in-line */", #5
+               paste0('inline @(macro1: @(macro_nest: nest_a1 $(2)) arg3)'), #6
+               ' end') #7
+test_macro_env = list2env(tst_arg_defs_cplx)
+parse_output = parse_stan_macro(test_macro, 'test1', remove_comments = FALSE, macro_envir = test_macro_env) |> split_line()
+expected_out = c( # This is actually the split_line version, as the report will be better w/ separate lines
+ "combined macro is here // with a comment", "// two whole-lines after this", 
+"head", "null_macro_inserted", "and ends with arg2, now.", "", 
+"head2", "nested: ally fin and nest_a2", "and after outer_arg, we finally finish strong", 
+"nested: ally fin and nest_a2", "", "/* This next one is in-line */", 
+"inline head", "nested: nest_a1 and arg3", "and ends with arg3, now.", 
+"", " end") 
+
+expect_equal(parse_output, expected_out, 'Fairly wholistic test of parse_stan_macro()')
+
+```
+
+Now let's test multiple levels of argument passing...
+
+```{r}
+nested_macro_defs = list(
+  c = '$@', 
+  identity = '$(1)',
+  quote = 'quoted: <$(1)>',
+  m_middle = '@identity: @(c: "called:" $(3) "Outer:" $(2) "Middle:" $(1) )',
+  m_outer = '@m_middle: "middle nonsense" $(1) $(2) ',
+  m_call = '@m_outer:  outer_arg @(quote: $(1) )'
+  )
+# Test Function that can quickly loop through the list of nested macro functions, parse them in order, and add them to the list.
+make_nested_macro = \(macro_list, next_macro, macro_name, ...) {
+  out = parse_stan_macro(next_macro, macro_name, remove_comments = TRUE,
+                         macro_envir = list2env(macro_list))
+  macro_list[[macro_name]] = out
+  macro_list
+}
+
+nested_macros = reduce2(nested_macro_defs, names(nested_macro_defs), 
+                        make_nested_macro, .init = list())
+expectation_1 = collapse_lines(c(
+  'called:', 'quoted: <caller_arg>',
+  'Outer:', 'outer_arg',
+  'Middle:', 'middle nonsense'))
+expect_equal(parse_stan_macro('@m_call: caller_arg', 'test_call',
+                 macro_envir = list2env(nested_macros)),
+             expectation_1, 'Complex Nested argument passing test')
+
+
+expectation_2 = collapse_lines(c(
+  'called:', 'quoted: <$(2)>',
+  'Outer:', 'outer_arg',
+  'Middle:', 'middle nonsense'))
+expect_equal(parse_stan_macro('@m_call: $(2)', 'test_call',
+                 macro_envir = list2env(nested_macros)),
+             expectation_2, 'Complex Nested argument passing test w/ $(2) passed')
+
+```
+
+
+
+## `stan_macro_engine()`
+
+## `write_stan_files()`
