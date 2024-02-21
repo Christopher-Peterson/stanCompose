@@ -19,7 +19,7 @@ In theory, this should be automatic, but it needs to be tested.
 # Setup
 ```{r, echo = FALSE, include = FALSE}
 library(tinytest)
-source('stan_compose_functions.R')
+source('R/stan_compose_functions.R', chdir = TRUE)
 expect_idem_equal = \(target, fn, ..., info = NA_character_) expect_equal(fn(target), target, ..., info = info)
 
 ```
