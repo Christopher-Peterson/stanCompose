@@ -4,8 +4,9 @@
 # The Stan-Compose framework
 
 This is not yet a real R package, but eventually it will be. For now,
-source `R/stan_compose_functions.R` at the top of your RMD file, and
-include `write_stan_files()` after you’ve defined everything.
+add `source(R/stan_compose_functions.R, chdir = TRUE)` at the top of
+your RMD file, and include `write_stan_files()` after you’ve defined
+everything.
 
 ## Introduction
 
