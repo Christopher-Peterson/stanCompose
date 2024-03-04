@@ -8,7 +8,8 @@ suppressPackageStartupMessages({
 # Environments to save the chunk text/name in ####
 macro_env = rlang::new_environment()
 scaffold_env = rlang::new_environment()
-source('util.R')
-source('text_strip.r')
-source('macro_functions.r')
-source('knitr_functions.r')
+
+source('util.R', chdir = TRUE)
+source('text_strip.R', chdir = TRUE)
+source('macro_functions.R', chdir = TRUE)
+source('knitr_functions.R', chdir = TRUE)
