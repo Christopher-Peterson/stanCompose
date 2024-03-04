@@ -29,7 +29,7 @@ knitr::knit_engines$set(stan = stan_macro_engine)
 
 # Write the stan files
 write_stan_files = \(out_direc = knitr::current_input(dir = TRUE) |> stringr::str_replace("\\...?.?$", '_models')) {
-  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(out_direc, showWarnings = FALSE, recursive = TRUE)
   # browser()
   scaffolds = as.list(scaffold_env) #|> imap(parse_stan_macros, macro_list = macros)
   files = file.path(out_direc, paste0(names(scaffolds), '.stan'))
