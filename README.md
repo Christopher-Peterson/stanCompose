@@ -15,19 +15,24 @@ with slight variants, all within a single R Markdown document. Any
 element that is common between more than one variant will be written as
 a separate chunk in the document; these are effectively text macros.
 
-Terminology: - *Stan chunk*: A markdown chunk of stan code. Chunks can
-be Scaffolds or Macros. - *Scaffold*: A Stan chunk that will be rendered
-into an independent Stan file. Macros can be called within scaffolds,
-but scaffolds cannot be called by other chunks. - *Macro*: A Stan chunk
-that will *not* be compiled to an independent Stan file. Macros can be
-called by scaffolds, other macros, or as arguments. - *Literal*: Stan
-code does not call any arguments or macros.  
+Terminology:
+
+- *Stan chunk*: A markdown chunk of stan code. Chunks can be Scaffolds
+  or Macros.
+- *Scaffold*: A Stan chunk that will be rendered into an independent
+  Stan file. Macros can be called within scaffolds, but scaffolds cannot
+  be called by other chunks.
+- *Macro*: A Stan chunk that will *not* be compiled to an independent
+  Stan file. Macros can be called by scaffolds, other macros, or as
+  arguments.
+- *Literal*: Stan code does not call any arguments or macros.
 - *Argument*: extra options passed to a macro when it is called.
-Arguments can be either Macros or Literals. - *Macro/Argument call*:
-Text within a Stan chunk that triggers the splicing of an argument or
-the parsing and splicing of a macro. - *Parsing*: The conversion of a
-macro into a literal. - *Splicing*: The process by which literals
-replace a Macro or Argument call.
+  Arguments can be either Macros or Literals.
+- *Macro/Argument call*: Text within a Stan chunk that triggers the
+  splicing of an argument or the parsing and splicing of a macro.
+- *Parsing*: The conversion of a macro into a literal.
+- *Splicing*: The process by which literals replace a Macro or Argument
+  call.
 
 ## Defining macros
 
@@ -43,22 +48,30 @@ based on the stanCompose rmd file’s name.
 
 ### Chunk Options
 
-Required: - `label` (the first argument, can be unnamed); this is the
-name of the macro or the filename of the scaffold.
+Required:
 
-Optional: - `scaffold`: Set to `TRUE` if the chunk is a scaffold
-(otherwise the chunk is a macro) - `removecomments`: Set to `FALSE` to
-*not* remove comments from the chunk during parsing. - `args`: This
-doesn’t do anything (yet), but is a useful way to make macro arguments
-visible when the chunk is collapsed.
+- `label` (the first argument, can be unnamed); this is the name of the
+  macro or the filename of the scaffold.
+
+Optional:
+
+- `scaffold`: Set to `TRUE` if the chunk is a scaffold (otherwise the
+  chunk is a macro)
+- `removecomments`: Set to `FALSE` to *not* remove comments from the
+  chunk during parsing.
+- `args`: This doesn’t do anything (yet), but is a useful way to make
+  macro arguments visible when the chunk is collapsed.
 
 ## Calling Macros
 
 Previously defined macros can be called inside a chunk in one of two
-ways: - Whole-line macros: A line beginning with `@macro_name` (leading
-whitespace is fine) is replaced with the macro; and subsequent text on
-the line will be removed. - Inline macros: Macro is spliced at
-`@(macro_name)`, without removing the rest of the line.
+ways:
+
+- Whole-line macros: A line beginning with `@macro_name` (leading
+  whitespace is fine) is replaced with the macro; and subsequent text on
+  the line will be removed.
+- Inline macros: Macro is spliced at `@(macro_name)`, without removing
+  the rest of the line.
 
 Macros can be called within other macros.
 
@@ -71,10 +84,12 @@ literals (plain text) or other macros.
 ### Using Arguments in Macross
 
 Literal arguments (and parsed macro arguments) are referenced by
-position within a chunk: - Whole-line arguments: A line beginning with
-`$1` is replaced with the first argument. - Inline arguments: The first
-argument is spliced at `$(1)` (second with `$(2)`, etc); the rest of the
-line isn’t removed.
+position within a chunk:
+
+- Whole-line arguments: A line beginning with `$1` is replaced with the
+  first argument.
+- Inline arguments: The first argument is spliced at `$(1)` (second with
+  `$(2)`, etc); the rest of the line isn’t removed.
 
 To insert all arguments in the order called, use `$@`; This can only be
 called as a line macro, and will place a newline between each. To
@@ -92,15 +107,17 @@ matches the number of called arguments.
 
 ### Calling a Macro with Arguments
 
-Calling a macro with arguments: - Basic literals:
-`macro_name: literal1 literal2` (whole line) or
-`@(macro_name: literal1 literal2)` (inline) - Complex literals:
-`macro_name: literal1 "multi-word literal" literal3` - Basic Macro arg:
-`macro_name: literal1 @macro_1 "multi-word literal" @macro_2` - Nested
-Macro arg:
-`macro_name: literal1 @(sub_macro: nested_lit_arg @(more_nested_macro: "doubly nested arg" ) final_literal)` -
-Passing an arg to a nested macro arg:
-`macro_name: @(sub_macro: arg1 $(5) )`
+Calling a macro with arguments:
+
+- Basic literals: `macro_name: literal1 literal2` (whole line) or
+  `@(macro_name: literal1 literal2)` (inline)
+- Complex literals: `macro_name: literal1 "multi-word literal" literal3`
+- Basic Macro arg:
+  `macro_name: literal1 @macro_1 "multi-word literal" @macro_2`
+- Nested Macro arg:
+  `macro_name: literal1 @(sub_macro: nested_lit_arg @(more_nested_macro: "doubly nested arg" ) final_literal)`
+- Passing an arg to a nested macro arg:
+  `macro_name: @(sub_macro: arg1 $(5) )`
 
 Macro arguments are parsed into literals, then treated like literal
 arguments.
